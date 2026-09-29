@@ -81,7 +81,7 @@ export async function POST(request: Request) {
           { content: parsed.data.text, role: "user" },
         ],
         model: studySession.model,
-        stream: false,
+        stream: true,
       }),
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -99,21 +99,111 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await response.json();
-    const answer = result?.choices?.[0]?.message?.content;
-    if (typeof answer !== "string" || !answer.trim()) {
+    const upstreamBody = response.body;
+    if (!upstreamBody) {
       return Response.json(
-        { error: "AI 未返回有效回复，请重试。" },
+        { error: "AI 暂时无法回复，请稍后重试。" },
         { status: 502 }
       );
     }
 
-    const messages = await saveStudyExchange(
-      studySession.id,
-      parsed.data.text,
-      answer.trim()
-    );
-    return Response.json({ messages });
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const send = (event: Record<string, unknown>) => {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
+          );
+        };
+
+        let answer = "";
+        try {
+          const decoder = new TextDecoder();
+          let buffer = "";
+          let modelFinished = false;
+
+          const handleEvent = (rawEvent: string) => {
+            const data = rawEvent
+              .split("\n")
+              .filter((line) => line.startsWith("data:"))
+              .map((line) => line.slice(5).trimStart())
+              .join("\n");
+
+            if (!data) {
+              return;
+            }
+            if (data === "[DONE]") {
+              modelFinished = true;
+              return;
+            }
+
+            const chunk = JSON.parse(data);
+            const text = chunk?.choices?.[0]?.delta?.content;
+            if (typeof text === "string" && text.length > 0) {
+              answer += text;
+              send({ text, type: "delta" });
+            }
+          };
+
+          const handleChunk = (chunk: Uint8Array) => {
+            if (modelFinished) {
+              return;
+            }
+            buffer += decoder.decode(chunk, { stream: true });
+            buffer = buffer.replace(/\r\n/g, "\n");
+
+            let boundary = buffer.indexOf("\n\n");
+            while (boundary !== -1) {
+              handleEvent(buffer.slice(0, boundary));
+              buffer = buffer.slice(boundary + 2);
+              if (modelFinished) {
+                break;
+              }
+              boundary = buffer.indexOf("\n\n");
+            }
+          };
+
+          await upstreamBody.pipeTo(
+            new WritableStream<Uint8Array>({ write: handleChunk })
+          );
+
+          buffer += decoder.decode();
+          buffer = buffer.replace(/\r\n/g, "\n");
+          if (buffer.trim() && !modelFinished) {
+            handleEvent(buffer);
+          }
+          if (!modelFinished) {
+            send({ error: "AI 回复连接中断，请重试。", type: "error" });
+            return;
+          }
+
+          const finalAnswer = answer.trim();
+          if (!finalAnswer) {
+            send({ error: "AI 未返回有效回复，请重试。", type: "error" });
+            return;
+          }
+
+          const messages = await saveStudyExchange(
+            studySession.id,
+            parsed.data.text,
+            finalAnswer
+          );
+          send({ messages, type: "done" });
+        } catch (error) {
+          console.error("Study chat stream failed:", error);
+          send({ error: "AI 暂时无法回复，请稍后重试。", type: "error" });
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Cache-Control": "no-cache, no-transform",
+        "Content-Type": "text/event-stream; charset=utf-8",
+      },
+    });
   } catch (error) {
     if (error instanceof StudySessionError) {
       return Response.json({ error: error.message }, { status: error.status });

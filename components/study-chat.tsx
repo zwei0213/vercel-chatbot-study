@@ -49,6 +49,7 @@ export function StudyChat({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [streamingText, setStreamingText] = useState("");
   const [updating, setUpdating] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [startedAt, setStartedAt] = useState<string | null>(null);
@@ -207,9 +208,11 @@ export function StudyChat({
 
   useEffect(() => {
     if (messageCount > 0 || sending) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      bottomRef.current?.scrollIntoView({
+        behavior: streamingText ? "auto" : "smooth",
+      });
     }
-  }, [messageCount, sending]);
+  }, [messageCount, sending, streamingText]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -219,21 +222,85 @@ export function StudyChat({
 
     setSending(true);
     setError("");
+    setStreamingText("");
     try {
       const response = await fetch("/api/study/chat", {
         body: JSON.stringify({ participantId, text }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
-      const data = await response.json();
       if (!response.ok) {
+        const data = await response.json();
         throw new Error(data.error ?? "发送失败，请重试。");
       }
-      mergeMessages(data.messages);
-      setInput("");
+      if (!response.body) {
+        throw new Error("无法读取 AI 回复，请重试。");
+      }
+
+      const responseBody = response.body;
+      if (!responseBody) {
+        throw new Error("无法读取 AI 回复，请重试。");
+      }
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let completed = false;
+
+      const handleEvent = (rawEvent: string) => {
+        const data = rawEvent
+          .split("\n")
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trimStart())
+          .join("\n");
+        if (!data) {
+          return;
+        }
+
+        const event = JSON.parse(data) as {
+          error?: string;
+          messages?: StudyMessage[];
+          text?: string;
+          type?: string;
+        };
+        if (event.type === "delta" && typeof event.text === "string") {
+          setStreamingText((current) => current + event.text);
+        } else if (event.type === "done" && event.messages) {
+          mergeMessages(event.messages);
+          setInput("");
+          completed = true;
+        } else if (event.type === "error") {
+          throw new Error(event.error ?? "发送失败，请重试。");
+        }
+      };
+
+      const handleChunk = (chunk: Uint8Array) => {
+        buffer += decoder.decode(chunk, { stream: true });
+        buffer = buffer.replace(/\r\n/g, "\n");
+
+        let boundary = buffer.indexOf("\n\n");
+        while (boundary !== -1) {
+          handleEvent(buffer.slice(0, boundary));
+          buffer = buffer.slice(boundary + 2);
+          boundary = buffer.indexOf("\n\n");
+        }
+      };
+
+      await responseBody.pipeTo(
+        new WritableStream<Uint8Array>({ write: handleChunk })
+      );
+
+      buffer += decoder.decode();
+      buffer = buffer.replace(/\r\n/g, "\n");
+      if (buffer.trim()) {
+        handleEvent(buffer);
+      }
+
+      if (!completed) {
+        throw new Error("AI 回复连接中断，请重试。");
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "发送失败，请重试。");
     } finally {
+      setStreamingText("");
       setSending(false);
     }
   }, [
@@ -333,10 +400,18 @@ export function StudyChat({
               {message.content}
             </div>
           ))}
-          {sending ? (
+          {sending && !streamingText ? (
             <p className="text-sm text-slate-500" role="status">
               AI 正在回复…
             </p>
+          ) : null}
+          {streamingText ? (
+            <div className="mr-auto max-w-[88%] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-7 whitespace-pre-wrap text-slate-900">
+              {streamingText}
+              <span aria-hidden="true" className="animate-pulse">
+                ▍
+              </span>
+            </div>
           ) : null}
           <div ref={bottomRef} />
         </div>
