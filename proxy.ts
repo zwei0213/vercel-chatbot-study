@@ -13,6 +13,11 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // CSV export authenticates with its own administrator bearer token.
+  if (pathname === "/api/study/export") {
+    return NextResponse.next();
+  }
+
   const token = await getToken({
     req: request,
     secret: process.env.AUTH_SECRET,

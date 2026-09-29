@@ -19,9 +19,12 @@ yarn-error.log*
 .env
 .vercel
 .env*.local
+/study-conversations.csv
 /test-results/
 /playwright-report/
 /blob-report/
 /playwright/*
+/.playwright-cli/
+/output/playwright/
 next-env.d.ts
 tsconfig.tsbuildinfo

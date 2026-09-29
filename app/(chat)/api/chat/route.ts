@@ -65,8 +65,6 @@ function getStreamContext() {
   }
 }
 
-export { getStreamContext };
-
 export async function POST(request: Request) {
   let requestBody: PostRequestBody;
 
