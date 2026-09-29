@@ -82,6 +82,7 @@ export async function POST(request: Request) {
         ],
         model: studySession.model,
         stream: true,
+        thinking: { type: "disabled" },
       }),
       headers: {
         Authorization: `Bearer ${apiKey}`,
