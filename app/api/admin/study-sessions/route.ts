@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isStudyAdminAuthenticated } from "@/lib/study/admin";
 import {
+  deleteStudyAdminSession,
   getStudyAdminSessionDetail,
   listStudyAdminSessions,
 } from "@/lib/study/queries";
@@ -66,6 +67,31 @@ export async function GET(request: Request) {
     console.error("Study admin history lookup failed:", error);
     return Response.json(
       { error: "读取历史记录失败，请稍后重试。" },
+      { status: 503 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  if (!(await isStudyAdminAuthenticated())) {
+    return Response.json({ error: "请先登录管理员后台。" }, { status: 401 });
+  }
+
+  const sessionId = new URL(request.url).searchParams.get("sessionId");
+  if (!sessionId || !sessionIdSchema.safeParse(sessionId).success) {
+    return Response.json({ error: "对话编号格式无效。" }, { status: 400 });
+  }
+
+  try {
+    const deleted = await deleteStudyAdminSession(sessionId);
+    if (!deleted) {
+      return Response.json({ error: "找不到这条对话记录。" }, { status: 404 });
+    }
+    return Response.json({ deleted: true });
+  } catch (error) {
+    console.error("Study admin conversation deletion failed:", error);
+    return Response.json(
+      { error: "删除对话失败，请稍后重试。" },
       { status: 503 }
     );
   }

@@ -84,6 +84,10 @@ export function StudyAdmin({
   const [detailBusy, setDetailBusy] = useState(false);
   const [keyBusy, setKeyBusy] = useState(false);
   const [confirmKeyReset, setConfirmKeyReset] = useState(false);
+  const [confirmDeleteSessionId, setConfirmDeleteSessionId] = useState<
+    string | null
+  >(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -295,6 +299,57 @@ export function StudyAdmin({
 
   const handleBeginKeyReset = useCallback(() => setConfirmKeyReset(true), []);
   const handleCancelKeyReset = useCallback(() => setConfirmKeyReset(false), []);
+
+  const handleBeginDeleteSession = useCallback(() => {
+    if (selectedId) {
+      setConfirmDeleteSessionId(selectedId);
+    }
+  }, [selectedId]);
+
+  const handleCancelDeleteSession = useCallback(
+    () => setConfirmDeleteSessionId(null),
+    []
+  );
+
+  const handleDeleteSession = useCallback(async () => {
+    const sessionId = confirmDeleteSessionId;
+    if (!sessionId) {
+      return;
+    }
+
+    setDeleteBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(
+        `/api/admin/study-sessions?sessionId=${encodeURIComponent(sessionId)}`,
+        { method: "DELETE" }
+      );
+      if (!response.ok) {
+        throw new Error(await readError(response, "删除会话失败。"));
+      }
+
+      const nextPage = sessions.length === 1 && page > 1 ? page - 1 : page;
+      if (selectedId === sessionId) {
+        setDetail(null);
+      }
+      setConfirmDeleteSessionId(null);
+      await loadSessions(nextPage, condition, query);
+      setNotice("会话及其中的消息已删除。");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "删除会话失败。");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }, [
+    condition,
+    confirmDeleteSessionId,
+    loadSessions,
+    page,
+    query,
+    selectedId,
+    sessions,
+  ]);
 
   const handleResetApiKey = useCallback(async () => {
     setKeyBusy(true);
@@ -673,6 +728,44 @@ export function StudyAdmin({
                       </dd>
                     </div>
                   </dl>
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                    <span className="text-xs text-slate-500">
+                      删除会话会同时删除其中的所有消息。
+                    </span>
+                    {confirmDeleteSessionId === detail.id ? (
+                      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-red-50 p-2 text-sm text-red-950">
+                        <span>
+                          永久删除此会话及 {detail.messages.length}{" "}
+                          条消息？此操作无法撤销。
+                        </span>
+                        <button
+                          className="rounded-lg bg-red-700 px-3 py-2 font-medium text-white disabled:opacity-50"
+                          disabled={deleteBusy}
+                          onClick={handleDeleteSession}
+                          type="button"
+                        >
+                          {deleteBusy ? "正在删除…" : "确认删除"}
+                        </button>
+                        <button
+                          className="rounded-lg border border-red-200 px-3 py-2 font-medium disabled:opacity-50"
+                          disabled={deleteBusy}
+                          onClick={handleCancelDeleteSession}
+                          type="button"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                        disabled={deleteBusy}
+                        onClick={handleBeginDeleteSession}
+                        type="button"
+                      >
+                        删除此会话
+                      </button>
+                    )}
+                  </div>
                 </header>
                 <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50/70 p-4 sm:p-6">
                   {detail.messages.length === 0 ? (

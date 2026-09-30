@@ -236,6 +236,23 @@ export async function getStudyAdminSessionDetail(id: string) {
   return { ...session, messages };
 }
 
+export function deleteStudyAdminSession(id: string) {
+  return db.transaction(async (tx) => {
+    const [session] = await tx
+      .select({ id: studySession.id })
+      .from(studySession)
+      .where(eq(studySession.id, id))
+      .for("update");
+    if (!session) {
+      return false;
+    }
+
+    await tx.delete(studyMessage).where(eq(studyMessage.sessionId, id));
+    await tx.delete(studySession).where(eq(studySession.id, id));
+    return true;
+  });
+}
+
 export async function getStudyAdminSetting(key: string) {
   const [setting] = await db
     .select({
