@@ -1,9 +1,9 @@
 import "server-only";
 
-import { and, asc, count, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, type SQL, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { studyMessage, studySession } from "@/lib/db/schema";
+import { studyAdminSetting, studyMessage, studySession } from "@/lib/db/schema";
 import { getStudyPrompt, STUDY_MODEL, type StudyCondition } from "./study";
 import {
   getStudyElapsedSeconds,
@@ -157,4 +157,108 @@ export function getStudyExportRows() {
     .from(studySession)
     .leftJoin(studyMessage, eq(studyMessage.sessionId, studySession.id))
     .orderBy(asc(studySession.createdAt), asc(studyMessage.sequence));
+}
+
+export async function listStudyAdminSessions({
+  condition,
+  page,
+  pageSize,
+  query,
+}: {
+  condition: "all" | StudyCondition;
+  page: number;
+  pageSize: number;
+  query: string;
+}) {
+  const filters: SQL[] = [];
+  if (condition !== "all") {
+    filters.push(eq(studySession.condition, condition));
+  }
+  if (query) {
+    const pattern = `%${query}%`;
+    filters.push(
+      sql`(${studySession.id}::text ILIKE ${pattern} OR ${studySession.userId}::text ILIKE ${pattern})`
+    );
+  }
+  const where = filters.length > 0 ? and(...filters) : undefined;
+  const [total] = await db
+    .select({ value: count() })
+    .from(studySession)
+    .where(where);
+  const sessions = await db
+    .select({
+      condition: studySession.condition,
+      createdAt: studySession.createdAt,
+      endedAt: studySession.endedAt,
+      id: studySession.id,
+      messageCount: sql<number>`count(${studyMessage.id})::int`,
+      model: studySession.model,
+      startedAt: studySession.startedAt,
+      userId: studySession.userId,
+    })
+    .from(studySession)
+    .leftJoin(studyMessage, eq(studyMessage.sessionId, studySession.id))
+    .where(where)
+    .groupBy(
+      studySession.id,
+      studySession.condition,
+      studySession.createdAt,
+      studySession.endedAt,
+      studySession.model,
+      studySession.startedAt,
+      studySession.userId
+    )
+    .orderBy(desc(studySession.createdAt))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+
+  return { sessions, total: total.value };
+}
+
+export async function getStudyAdminSessionDetail(id: string) {
+  const [session] = await db
+    .select({
+      condition: studySession.condition,
+      createdAt: studySession.createdAt,
+      endedAt: studySession.endedAt,
+      id: studySession.id,
+      model: studySession.model,
+      startedAt: studySession.startedAt,
+      userId: studySession.userId,
+    })
+    .from(studySession)
+    .where(eq(studySession.id, id))
+    .limit(1);
+  if (!session) {
+    return null;
+  }
+  const messages = await getStudyMessages(id);
+  return { ...session, messages };
+}
+
+export async function getStudyAdminSetting(key: string) {
+  const [setting] = await db
+    .select({
+      updatedAt: studyAdminSetting.updatedAt,
+      value: studyAdminSetting.value,
+    })
+    .from(studyAdminSetting)
+    .where(eq(studyAdminSetting.key, key))
+    .limit(1);
+  return setting ?? null;
+}
+
+export async function setStudyAdminSetting(key: string, value: string) {
+  const updatedAt = new Date();
+  await db
+    .insert(studyAdminSetting)
+    .values({ key, updatedAt, value })
+    .onConflictDoUpdate({
+      set: { updatedAt, value },
+      target: studyAdminSetting.key,
+    });
+}
+
+export async function deleteStudyAdminSetting(key: string) {
+  await db.delete(studyAdminSetting).where(eq(studyAdminSetting.key, key));
 }

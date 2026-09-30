@@ -186,3 +186,11 @@ export const studyMessage = pgTable(
 );
 
 export type StudyMessage = InferSelectModel<typeof studyMessage>;
+
+export const studyAdminSetting = pgTable("StudyAdminSetting", {
+  key: varchar("key", { length: 80 }).primaryKey().notNull(),
+  updatedAt: timestamp("updatedAt", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  value: text("value").notNull(),
+});

@@ -47,3 +47,7 @@ Invoke-WebRequest -Uri 'https://你的域名/api/study/export' -Headers @{ Autho
 ```
 
 导出接口不会向没有管理员令牌的请求提供数据。若模型请求失败，输入框会保留用户文字，且不会写入一段缺少 AI 回复的对话。部署前请用两个独立浏览器会话分别试聊、刷新和导出一次，确认两组记录及提示词配置符合实验方案。
+
+### 管理后台
+
+访问 `/admin` 并输入 `STUDY_ADMIN_TOKEN` 可查看参与者会话、按组别筛选和搜索用户/会话 UUID，也可检查对话全文。管理员令牌至少需要 32 个字符。后台可以保存 DeepSeek API Key 的数据库覆盖值；它使用 AES-256-GCM 加密后存储，页面不会回显 Key。未设置后台覆盖值时，系统继续使用 `DEEPSEEK_API_KEY` 环境变量。加密密钥由 `STUDY_ADMIN_TOKEN` 派生，因此更换该环境变量后，需要在后台重新保存 API Key。部署构建会自动创建后台设置表；本地可运行 `pnpm db:migrate`。

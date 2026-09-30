@@ -2,6 +2,7 @@ import { ipAddress } from "@vercel/functions";
 import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
 import { checkIpRateLimit } from "@/lib/ratelimit";
+import { getStudyApiKey } from "@/lib/study/admin";
 import {
   getStudyMessages,
   getStudySession,
@@ -33,7 +34,16 @@ export async function POST(request: Request) {
     );
   }
 
-  const apiKey = process.env.DEEPSEEK_API_KEY;
+  let apiKey: string | null;
+  try {
+    apiKey = await getStudyApiKey();
+  } catch (error) {
+    console.error("Study API key unavailable:", error);
+    return Response.json(
+      { error: "管理员保存的 API Key 无法读取，请在后台重新保存。" },
+      { status: 503 }
+    );
+  }
   if (!apiKey) {
     return Response.json(
       { error: "管理员尚未配置模型 API Key。" },

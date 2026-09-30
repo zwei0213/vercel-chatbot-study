@@ -13,6 +13,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (pathname === "/admin" || pathname.startsWith("/api/admin/")) {
+    return NextResponse.next();
+  }
+
   // CSV export authenticates with its own administrator bearer token.
   if (pathname === "/api/study/export") {
     return NextResponse.next();
