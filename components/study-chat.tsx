@@ -47,6 +47,7 @@ export function StudyChat({
   const [maxExchanges, setMaxExchanges] = useState<number | null>(null);
   const [messages, setMessages] = useState<StudyMessage[]>([]);
   const [input, setInput] = useState("");
+  const [pendingUserText, setPendingUserText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState("");
@@ -223,6 +224,9 @@ export function StudyChat({
     setSending(true);
     setError("");
     setStreamingText("");
+    setPendingUserText(text);
+    setInput("");
+    let completed = false;
     try {
       const response = await fetch("/api/study/chat", {
         body: JSON.stringify({ participantId, text }),
@@ -243,7 +247,6 @@ export function StudyChat({
       }
       const decoder = new TextDecoder();
       let buffer = "";
-      let completed = false;
 
       const handleEvent = (rawEvent: string) => {
         const data = rawEvent
@@ -265,7 +268,7 @@ export function StudyChat({
           setStreamingText((current) => current + event.text);
         } else if (event.type === "done" && event.messages) {
           mergeMessages(event.messages);
-          setInput("");
+          setPendingUserText("");
           completed = true;
         } else if (event.type === "error") {
           throw new Error(event.error ?? "发送失败，请重试。");
@@ -298,6 +301,8 @@ export function StudyChat({
         throw new Error("AI 回复连接中断，请重试。");
       }
     } catch (cause) {
+      setPendingUserText("");
+      setInput((current) => current || text);
       setError(cause instanceof Error ? cause.message : "发送失败，请重试。");
     } finally {
       setStreamingText("");
@@ -400,6 +405,11 @@ export function StudyChat({
               {message.content}
             </div>
           ))}
+          {pendingUserText ? (
+            <div className="ml-auto max-w-[88%] rounded-2xl bg-slate-800 px-4 py-3 text-sm leading-7 whitespace-pre-wrap text-white">
+              {pendingUserText}
+            </div>
+          ) : null}
           {sending && !streamingText ? (
             <p className="text-sm text-slate-500" role="status">
               AI 正在回复…
