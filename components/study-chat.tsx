@@ -76,6 +76,8 @@ export function StudyChat({
     sending ||
     updating ||
     isComplete;
+  const inputBlocked =
+    loading || !participantId || !startedAt || updating || isComplete;
   const reminder =
     startedAt && !isComplete && elapsed >= STUDY_TARGET_SECONDS
       ? "对话已满 30 分钟，请整理最后的想法并点击“结束对话”。系统不会自动中断。"
@@ -508,7 +510,7 @@ export function StudyChat({
             <textarea
               aria-label="输入消息"
               className="max-h-40 min-h-12 flex-1 resize-none bg-transparent p-2 text-sm outline-none"
-              disabled={blocked || reachedRoundLimit || confirmEnd}
+              disabled={inputBlocked || reachedRoundLimit || confirmEnd}
               maxLength={2000}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
