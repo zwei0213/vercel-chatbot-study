@@ -1,7 +1,8 @@
 import { createClient } from "redis";
 
 import { isProductionEnvironment } from "@/lib/constants";
-import { ChatbotError } from "@/lib/errors";
+
+class RateLimitError extends Error {}
 
 const MAX_MESSAGES = 10;
 const TTL_SECONDS = 60 * 60;
@@ -38,10 +39,10 @@ export async function checkIpRateLimit(ip: string | undefined) {
       .exec();
 
     if (typeof count === "number" && count > MAX_MESSAGES) {
-      throw new ChatbotError("rate_limit:chat");
+      throw new RateLimitError("Too many requests");
     }
   } catch (error) {
-    if (error instanceof ChatbotError) {
+    if (error instanceof RateLimitError) {
       throw error;
     }
   }
